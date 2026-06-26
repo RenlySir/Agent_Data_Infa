@@ -14,13 +14,33 @@ describe("App", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders the operational console shell with fallback data", async () => {
+  it("renders the operational console shell without demo business data", async () => {
     render(<App />);
 
     expect(await screen.findByText("Operational Overview")).toBeInTheDocument();
     expect(screen.getByText("Runtime memory is mem0 only")).toBeInTheDocument();
     expect(screen.getByText("mem0")).toBeInTheDocument();
-    expect(screen.getByText("research-sandbox")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("offline")).toBeInTheDocument());
+    expect(screen.queryByText("research-sandbox")).not.toBeInTheDocument();
+    expect(screen.queryByText("openclaw")).not.toBeInTheDocument();
+    expect(screen.queryByText("memory.recall")).not.toBeInTheDocument();
+  });
+
+  it("renders backend empty states instead of demo data", async () => {
+    stubEmptyOnlineApi();
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText("connected")).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: "OpenClaw" }));
+    expect(await screen.findByText("No OpenClaw sandboxes returned by the gateway.")).toBeInTheDocument();
+    expect(screen.queryByText("research-sandbox")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Keywords" }));
+    expect(await screen.findByText("No keyword activity returned by the gateway.")).toBeInTheDocument();
+    expect(screen.queryByText("memory")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Audit" }));
+    expect(await screen.findByText("No Memory Gate decisions returned by the gateway.")).toBeInTheDocument();
   });
 
   it("opens the OpenClaw sandbox management tab", async () => {
@@ -184,6 +204,32 @@ function stubOnlineApi() {
           }
         ]
       });
+    }
+    return Response.json({}, { status: 404 });
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
+function stubEmptyOnlineApi() {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.endsWith("/v1/control-plane/status")) {
+      return Response.json({
+        runtimeMemory: { provider: "mem0", status: "configured" },
+        gateway: { status: "online", recentRequests: 0, denyCount: 0 },
+        consolidator: { status: "idle", queueDepth: 0, promotedToday: 0, failedToday: 0 },
+        memoryGate: { status: "enforcing", allowCount: 0, denyCount: 0 }
+      });
+    }
+    if (url.endsWith("/v1/openclaw/sandboxes")) {
+      return Response.json({ sandboxes: [] });
+    }
+    if (url.endsWith("/v1/analytics/keywords?limit=12")) {
+      return Response.json({ keywords: [] });
+    }
+    if (url.endsWith("/v1/control-plane/gate-decisions")) {
+      return Response.json({ decisions: [] });
     }
     return Response.json({}, { status: 404 });
   });

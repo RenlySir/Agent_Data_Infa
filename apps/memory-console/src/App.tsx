@@ -31,7 +31,7 @@ import type {
   Sandbox
 } from "./api";
 import { requestJson } from "./api";
-import { defaultConfig, fallbackDecisions, fallbackKeywords, fallbackSandboxes, fallbackStatus } from "./sample-data";
+import { defaultConfig } from "./defaults";
 
 type Tab = "overview" | "memory" | "control" | "openclaw" | "keywords" | "audit";
 
@@ -49,13 +49,20 @@ const tabs: { id: Tab; label: string; icon: LucideIcon }[] = [
   { id: "audit", label: "Audit", icon: FileClock }
 ];
 
+const emptyStatus: ControlPlaneStatus = {
+  runtimeMemory: { provider: "mem0", status: "unknown" },
+  gateway: { status: "unknown", recentRequests: 0, denyCount: 0 },
+  consolidator: { status: "unknown", queueDepth: 0, promotedToday: 0, failedToday: 0 },
+  memoryGate: { status: "unknown", allowCount: 0, denyCount: 0 }
+};
+
 export function App() {
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [config, setConfig] = useState<ConsoleConfig>(defaultConfig);
-  const [status, setStatus] = useState<ControlPlaneStatus>(fallbackStatus);
-  const [sandboxes, setSandboxes] = useState<Sandbox[]>(fallbackSandboxes);
-  const [keywords, setKeywords] = useState<KeywordCount[]>(fallbackKeywords);
-  const [decisions, setDecisions] = useState<GateDecision[]>(fallbackDecisions);
+  const [status, setStatus] = useState<ControlPlaneStatus>(emptyStatus);
+  const [sandboxes, setSandboxes] = useState<Sandbox[]>([]);
+  const [keywords, setKeywords] = useState<KeywordCount[]>([]);
+  const [decisions, setDecisions] = useState<GateDecision[]>([]);
   const [recallResults, setRecallResults] = useState<RecallMemory[]>([]);
   const [activeAction, setActiveAction] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState("Ready");
@@ -87,6 +94,10 @@ export function App() {
       }
       setConnection("connected");
     } catch (error) {
+      setStatus(emptyStatus);
+      setSandboxes([]);
+      setKeywords([]);
+      setDecisions([]);
       setConnection("offline");
       if (updateInspector) {
         setInspector({ title: "Refresh failed", payload: String(error) });
@@ -307,6 +318,7 @@ export function App() {
           </div>
           <SandboxTable
             sandboxes={sandboxes}
+            emptyMessage={connection === "checking" ? "Loading OpenClaw sandboxes from the gateway..." : "No OpenClaw sandboxes returned by the gateway."}
             onStart={(sandbox) => transitionSandbox(sandbox, "start")}
             onStop={(sandbox) => transitionSandbox(sandbox, "stop")}
             onDelete={deleteSandbox}
@@ -374,6 +386,7 @@ export function App() {
           </section>
           <SandboxTable
             sandboxes={sandboxes}
+            emptyMessage={connection === "checking" ? "Loading OpenClaw sandboxes from the gateway..." : "No OpenClaw sandboxes returned by the gateway."}
             onStart={(sandbox) => transitionSandbox(sandbox, "start")}
             onStop={(sandbox) => transitionSandbox(sandbox, "stop")}
             onDelete={deleteSandbox}
@@ -386,28 +399,36 @@ export function App() {
     if (activeTab === "keywords") {
       return (
         <div className="keyword-list">
-          {keywords.map((keyword) => (
-            <button
-              key={keyword.keyword}
-              className="keyword-row"
-              onClick={() => recall(keyword.keyword)}
-              type="button"
-              aria-label={keyword.keyword}
-              disabled={activeAction === "recall"}
-            >
-              <span>{keyword.keyword}</span>
-              <div>
-                <div style={{ width: `${(keyword.count / maxKeywordCount) * 100}%` }} />
-              </div>
-              <strong>{keyword.count}</strong>
-            </button>
-          ))}
+          {keywords.length === 0 ? (
+            <EmptyState message={connection === "checking" ? "Loading keyword activity from the gateway..." : "No keyword activity returned by the gateway."} />
+          ) : (
+            keywords.map((keyword) => (
+              <button
+                key={keyword.keyword}
+                className="keyword-row"
+                onClick={() => recall(keyword.keyword)}
+                type="button"
+                aria-label={keyword.keyword}
+                disabled={activeAction === "recall"}
+              >
+                <span>{keyword.keyword}</span>
+                <div>
+                  <div style={{ width: `${(keyword.count / maxKeywordCount) * 100}%` }} />
+                </div>
+                <strong>{keyword.count}</strong>
+              </button>
+            ))
+          )}
         </div>
       );
     }
 
-    return <AuditTable decisions={decisions} onInspect={(decision) => setInspector({ title: `Decision: ${decision.operation}`, payload: decision })} />;
+    return <AuditTable decisions={decisions} emptyMessage={connection === "checking" ? "Loading Memory Gate decisions from the gateway..." : "No Memory Gate decisions returned by the gateway."} onInspect={(decision) => setInspector({ title: `Decision: ${decision.operation}`, payload: decision })} />;
   }
+}
+
+function EmptyState({ message }: { message: string }) {
+  return <p className="empty-state framed">{message}</p>;
 }
 
 function RecallResults({
@@ -469,12 +490,14 @@ function ControlCard({ icon: Icon, title, rows }: { icon: LucideIcon; title: str
 
 function SandboxTable({
   sandboxes,
+  emptyMessage,
   onStart,
   onStop,
   onDelete,
   activeAction
 }: {
   sandboxes: Sandbox[];
+  emptyMessage: string;
   onStart: (sandbox: Sandbox) => void;
   onStop: (sandbox: Sandbox) => void;
   onDelete: (sandbox: Sandbox) => void;
@@ -487,7 +510,9 @@ function SandboxTable({
         <h3>OpenClaw sandboxes</h3>
       </div>
       <div className="table">
-        {sandboxes.map((sandbox) => (
+        {sandboxes.length === 0 ? (
+          <EmptyState message={emptyMessage} />
+        ) : sandboxes.map((sandbox) => (
           <div className="table-row" key={sandbox.id}>
             <span className={`status-dot ${sandbox.status}`} />
             <strong>{sandbox.name}</strong>
@@ -526,7 +551,7 @@ function SandboxTable({
   );
 }
 
-function AuditTable({ decisions, onInspect }: { decisions: GateDecision[]; onInspect: (decision: GateDecision) => void }) {
+function AuditTable({ decisions, emptyMessage, onInspect }: { decisions: GateDecision[]; emptyMessage: string; onInspect: (decision: GateDecision) => void }) {
   return (
     <section className="table-panel">
       <div className="panel-heading">
@@ -534,7 +559,9 @@ function AuditTable({ decisions, onInspect }: { decisions: GateDecision[]; onIns
         <h3>Memory Gate decisions</h3>
       </div>
       <div className="audit-table">
-        {decisions.map((decision) => (
+        {decisions.length === 0 ? (
+          <EmptyState message={emptyMessage} />
+        ) : decisions.map((decision) => (
           <button className="audit-row" key={decision.id} onClick={() => onInspect(decision)} type="button">
             <span className={`decision-pill ${decision.decision}`}>{decision.decision}</span>
             <strong>{decision.operation}</strong>
