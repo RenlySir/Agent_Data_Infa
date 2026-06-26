@@ -28,7 +28,23 @@ npm run build
 
 ```bash
 cd apps/memory-gateway
-PORT=8787 MEMORY_PROVIDER=noop npm run dev
+PORT=8787 MEMORY_PROVIDER=noop MEMORY_GATEWAY_API_KEY=dev-memory-key npm run dev
 ```
 
 The local MVP uses an in-memory canonical store unless Supabase configuration is provided.
+
+Memory API requests must include a gateway API key and server-trusted scope headers:
+
+```bash
+curl -X POST http://localhost:8787/v1/memory/recall \
+  -H 'authorization: Bearer dev-memory-key' \
+  -H 'x-memory-tenant-id: 00000000-0000-0000-0000-000000000001' \
+  -H 'x-memory-user-id: 00000000-0000-0000-0000-000000000002' \
+  -H 'x-memory-agent-id: research-agent' \
+  -H 'content-type: application/json' \
+  -d '{
+    "tenant_id": "00000000-0000-0000-0000-000000000099",
+    "agent_id": "ignored-by-gateway",
+    "query": "technical plan preference"
+  }'
+```

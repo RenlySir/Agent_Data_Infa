@@ -2,6 +2,7 @@ import type { MemoryItem, RecallCandidate, RequestScope } from "../domain/types"
 import type {
   CanonicalMemoryStore,
   CaptureEventInput,
+  AccessLogInput,
   RememberInput
 } from "./canonical-memory-store";
 
@@ -13,6 +14,7 @@ interface StoredEvent {
 export class InMemoryCanonicalMemoryStore implements CanonicalMemoryStore {
   readonly events: StoredEvent[] = [];
   readonly memories: MemoryItem[] = [];
+  readonly accessLogs: (AccessLogInput & { id: string })[] = [];
 
   async captureEvent(input: CaptureEventInput): Promise<{ eventId: string }> {
     const eventId = crypto.randomUUID();
@@ -36,7 +38,7 @@ export class InMemoryCanonicalMemoryStore implements CanonicalMemoryStore {
       stability: 0.8,
       sensitivity: "normal",
       status: "active",
-      sourceEventIds: [],
+      sourceEventIds: input.sourceEventIds ?? [],
       updatedAt: new Date().toISOString()
     };
     this.memories.push(memory);
@@ -46,12 +48,18 @@ export class InMemoryCanonicalMemoryStore implements CanonicalMemoryStore {
   async recall(scope: RequestScope, _query: string, limit: number): Promise<RecallCandidate[]> {
     return this.memories
       .filter((memory) => memory.tenantId === scope.tenantId)
-      .filter((memory) => !memory.projectId || !scope.projectId || memory.projectId === scope.projectId)
+      .filter((memory) => !memory.projectId || memory.projectId === scope.projectId)
       .slice(0, limit)
       .map((memory) => ({
         ...memory,
         recencyScore: 0.5,
         scopeMatch: memory.projectId === scope.projectId ? 1 : 0.5
       }));
+  }
+
+  async logAccess(input: AccessLogInput): Promise<{ auditId: string }> {
+    const auditId = crypto.randomUUID();
+    this.accessLogs.push({ ...input, id: auditId });
+    return { auditId };
   }
 }

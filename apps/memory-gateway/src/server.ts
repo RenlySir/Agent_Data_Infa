@@ -2,6 +2,7 @@ import cors from "@fastify/cors";
 import Fastify from "fastify";
 import { loadConfig } from "./config";
 import { createSupabaseClient } from "./db/supabase";
+import { AuthError } from "./domain/auth";
 import type { CanonicalMemoryStore } from "./providers/canonical-memory-store";
 import { InMemoryCanonicalMemoryStore } from "./providers/in-memory-canonical-memory-store";
 import { NoopRuntimeMemoryProvider } from "./providers/noop-runtime-memory-provider";
@@ -14,18 +15,30 @@ import { rememberRoute } from "./routes/remember";
 export interface ServerDeps {
   store?: CanonicalMemoryStore;
   runtime?: RuntimeMemoryProvider;
+  authApiKey?: string;
 }
 
 export async function buildServer(deps: ServerDeps = {}) {
   const app = Fastify({ logger: true });
   await app.register(cors, { origin: true });
+  app.setErrorHandler((error, _request, reply) => {
+    if (error instanceof AuthError) {
+      return reply.status(error.statusCode).send({
+        error: "unauthorized",
+        message: error.message
+      });
+    }
+
+    return reply.send(error);
+  });
 
   const store = deps.store ?? buildDefaultStore();
   const runtime = deps.runtime ?? new NoopRuntimeMemoryProvider();
+  const authApiKey = deps.authApiKey ?? loadConfig().MEMORY_GATEWAY_API_KEY;
 
-  await app.register(eventsRoute({ store, runtime }));
-  await app.register(rememberRoute({ store }));
-  await app.register(recallRoute({ store, runtime }));
+  await app.register(eventsRoute({ store, runtime, authApiKey }));
+  await app.register(rememberRoute({ store, authApiKey }));
+  await app.register(recallRoute({ store, runtime, authApiKey }));
 
   app.get("/healthz", async () => ({ ok: true }));
 

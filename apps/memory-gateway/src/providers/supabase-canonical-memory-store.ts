@@ -3,6 +3,7 @@ import type { RecallCandidate, RequestScope } from "../domain/types";
 import type {
   CanonicalMemoryStore,
   CaptureEventInput,
+  AccessLogInput,
   RememberInput
 } from "./canonical-memory-store";
 
@@ -45,7 +46,8 @@ export class SupabaseCanonicalMemoryStore implements CanonicalMemoryStore {
         confidence: input.confidence ?? 0.8,
         importance: input.importance ?? 0.5,
         stability: 0.8,
-        status: "active"
+        status: "active",
+        source_event_ids: input.sourceEventIds ?? []
       })
       .select("*")
       .single();
@@ -78,6 +80,8 @@ export class SupabaseCanonicalMemoryStore implements CanonicalMemoryStore {
 
     if (scope.projectId) {
       query = query.or(`project_id.eq.${scope.projectId},project_id.is.null`);
+    } else {
+      query = query.is("project_id", null);
     }
 
     const { data, error } = await query;
@@ -88,6 +92,26 @@ export class SupabaseCanonicalMemoryStore implements CanonicalMemoryStore {
       recencyScore: 0.5,
       scopeMatch: row.project_id === scope.projectId ? 1 : 0.5
     }));
+  }
+
+  async logAccess(input: AccessLogInput): Promise<{ auditId: string }> {
+    const { data, error } = await this.supabase
+      .from("memory_access_logs")
+      .insert({
+        tenant_id: input.tenantId,
+        actor_type: input.actorType,
+        actor_id: input.actorId,
+        operation: input.operation,
+        memory_ids: input.memoryIds ?? [],
+        request_scope: input.requestScope,
+        decision: input.decision,
+        reason: input.reason
+      })
+      .select("id")
+      .single();
+
+    if (error) throw error;
+    return { auditId: data.id };
   }
 }
 

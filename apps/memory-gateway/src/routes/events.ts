@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
+import { getAuthenticatedScope } from "../domain/auth";
 import type { CanonicalMemoryStore } from "../providers/canonical-memory-store";
 import type { RuntimeMemoryProvider } from "../providers/runtime-memory-provider";
 
@@ -20,15 +21,17 @@ const EventsBody = z.object({
 export function eventsRoute(deps: {
   store: CanonicalMemoryStore;
   runtime: RuntimeMemoryProvider;
+  authApiKey?: string;
 }): FastifyPluginAsync {
   return async (app) => {
     app.post("/v1/memory/events", async (request) => {
       const body = EventsBody.parse(request.body);
+      const authScope = getAuthenticatedScope(request, deps.authApiKey);
       const scope = {
-        tenantId: body.tenant_id,
-        userId: body.user_id,
-        agentId: body.agent_id,
-        projectId: body.project_id,
+        tenantId: authScope.tenantId,
+        userId: authScope.userId,
+        agentId: authScope.agentId,
+        projectId: authScope.projectId,
         sessionId: body.session_id,
         taskId: body.task_id
       };
@@ -50,6 +53,14 @@ export function eventsRoute(deps: {
               metadata: body.structured_payload
             })
           : [];
+      await deps.store.logAccess({
+        tenantId: scope.tenantId,
+        actorType: "agent",
+        actorId: scope.agentId,
+        operation: "memory.events.capture",
+        requestScope: { ...scope },
+        decision: "allow"
+      });
 
       return {
         event_id: event.eventId,

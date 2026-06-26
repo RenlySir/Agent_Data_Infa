@@ -60,4 +60,12 @@ describe("filterRecallCandidates", () => {
     ]);
     expect(result).toHaveLength(0);
   });
+
+  it("rejects project memories when request has no project context", () => {
+    const result = filterRecallCandidates(
+      { tenantId: "t1", userId: "u1", agentId: "a1" },
+      [candidate({ projectId: "p1", scope: "project" })]
+    );
+    expect(result).toHaveLength(0);
+  });
 });

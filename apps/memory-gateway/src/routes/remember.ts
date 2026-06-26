@@ -1,5 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
+import { getAuthenticatedScope } from "../domain/auth";
+import { validateRememberWrite } from "../domain/write-gate";
 import type { CanonicalMemoryStore } from "../providers/canonical-memory-store";
 
 const RememberBody = z.object({
@@ -12,20 +14,45 @@ const RememberBody = z.object({
   memory_type: z.enum(["profile", "preference", "fact", "procedure", "episode", "task_state", "artifact"]),
   scope: z.enum(["session", "task", "user", "project", "team", "org", "agent"]),
   content: z.string().min(1),
+  source_event_ids: z.array(z.string().uuid()).default([]),
+  confirmed_by_user: z.boolean().default(false),
   confidence: z.number().min(0).max(1).optional(),
   importance: z.number().min(0).max(1).optional()
 });
 
-export function rememberRoute(deps: { store: CanonicalMemoryStore }): FastifyPluginAsync {
+export function rememberRoute(deps: { store: CanonicalMemoryStore; authApiKey?: string }): FastifyPluginAsync {
   return async (app) => {
-    app.post("/v1/memory/remember", async (request) => {
+    app.post("/v1/memory/remember", async (request, reply) => {
       const body = RememberBody.parse(request.body);
-      return deps.store.remember({
+      const authScope = getAuthenticatedScope(request, deps.authApiKey);
+      const writeDecision = validateRememberWrite({
+        content: body.content,
+        confirmedByUser: body.confirmed_by_user,
+        sourceEventIds: body.source_event_ids
+      });
+
+      if (!writeDecision.allowed) {
+        await deps.store.logAccess({
+          tenantId: authScope.tenantId,
+          actorType: "agent",
+          actorId: authScope.agentId,
+          operation: "memory.remember",
+          requestScope: { ...authScope },
+          decision: "deny",
+          reason: writeDecision.reason
+        });
+        return reply.status(400).send({
+          error: "bad_request",
+          message: writeDecision.reason
+        });
+      }
+
+      const memory = await deps.store.remember({
         scope: {
-          tenantId: body.tenant_id,
-          userId: body.user_id,
-          agentId: body.agent_id,
-          projectId: body.project_id
+          tenantId: authScope.tenantId,
+          userId: authScope.userId,
+          agentId: authScope.agentId,
+          projectId: authScope.projectId
         },
         ownerType: body.owner_type,
         ownerId: body.owner_id,
@@ -33,8 +60,20 @@ export function rememberRoute(deps: { store: CanonicalMemoryStore }): FastifyPlu
         memoryScope: body.scope,
         content: body.content,
         confidence: body.confidence,
-        importance: body.importance
+        importance: body.importance,
+        sourceEventIds: body.source_event_ids,
+        confirmedByUser: body.confirmed_by_user
       });
+      await deps.store.logAccess({
+        tenantId: authScope.tenantId,
+        actorType: "agent",
+        actorId: authScope.agentId,
+        operation: "memory.remember",
+        memoryIds: [memory.id],
+        requestScope: { ...authScope },
+        decision: "allow"
+      });
+      return memory;
     });
   };
 }

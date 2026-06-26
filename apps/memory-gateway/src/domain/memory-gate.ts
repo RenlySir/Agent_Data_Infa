@@ -11,6 +11,7 @@ export function filterRecallCandidates(
     if (candidate.tenantId !== requestScope.tenantId) return false;
     if (blockedStatuses.has(candidate.status)) return false;
     if (candidate.validUntil && new Date(candidate.validUntil) <= now) return false;
+    if (candidate.projectId && !requestScope.projectId) return false;
     if (candidate.projectId && requestScope.projectId && candidate.projectId !== requestScope.projectId) {
       return false;
     }

@@ -4,6 +4,7 @@ const EnvSchema = z.object({
   PORT: z.coerce.number().default(8787),
   SUPABASE_URL: z.string().url().optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
+  MEMORY_GATEWAY_API_KEY: z.string().min(1),
   MEMORY_PROVIDER: z.enum(["noop", "mem0", "mem9"]).default("noop")
 });
 
