@@ -28,7 +28,10 @@ export interface ServerDeps {
 
 export async function buildServer(deps: ServerDeps = {}) {
   const app = Fastify({ logger: true });
-  await app.register(cors, { origin: true });
+  await app.register(cors, {
+    origin: true,
+    methods: ["GET", "HEAD", "POST", "DELETE", "OPTIONS"]
+  });
   app.setErrorHandler((error, _request, reply) => {
     if (error instanceof AuthError) {
       return reply.status(error.statusCode).send({

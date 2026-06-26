@@ -64,14 +64,15 @@ export function headers(config: ConsoleConfig) {
     "x-memory-tenant-id": config.tenantId,
     "x-memory-user-id": config.userId,
     "x-memory-agent-id": config.agentId,
-    "x-memory-project-id": config.projectId,
-    "content-type": "application/json"
+    "x-memory-project-id": config.projectId
   };
 }
 
-function mergeHeaders(config: ConsoleConfig, initHeaders?: HeadersInit): HeadersInit {
+function mergeHeaders(config: ConsoleConfig, init: RequestInit): HeadersInit {
+  const initHeaders = init.headers;
   return {
     ...headers(config),
+    ...(init.body ? { "content-type": "application/json" } : {}),
     ...(initHeaders instanceof Headers ? Object.fromEntries(initHeaders.entries()) : initHeaders)
   };
 }
@@ -83,7 +84,7 @@ export async function requestJson<T>(
 ): Promise<T> {
   const response = await fetch(`${config.gatewayUrl}${path}`, {
     ...init,
-    headers: mergeHeaders(config, init.headers)
+    headers: mergeHeaders(config, init)
   });
 
   if (!response.ok) {

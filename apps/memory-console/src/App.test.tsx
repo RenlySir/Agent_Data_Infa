@@ -88,6 +88,21 @@ describe("App", () => {
     expect(await screen.findByText("OpenClaw sandbox created")).toBeInTheDocument();
     expect(screen.queryByText("Refresh result")).not.toBeInTheDocument();
   });
+
+  it("deletes OpenClaw sandboxes without sending an empty JSON body", async () => {
+    const fetchMock = stubOnlineApi();
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "OpenClaw" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Delete research-sandbox" }));
+
+    expect(await screen.findByText("OpenClaw sandbox deleted")).toBeInTheDocument();
+    await waitFor(() => {
+      const deleteCall = fetchMock.mock.calls.find(([url, init]) => String(url).endsWith("/v1/openclaw/sandboxes/sandbox-1") && init?.method === "DELETE");
+      expect(deleteCall).toBeDefined();
+      expect(deleteCall?.[1]?.headers).not.toHaveProperty("content-type");
+    });
+  });
 });
 
 function stubOnlineApi() {
@@ -113,6 +128,17 @@ function stubOnlineApi() {
         createdAt: "2026-06-26T08:01:00.000Z",
         updatedAt: "2026-06-26T08:01:00.000Z",
         logs: ["created sandbox"]
+      });
+    }
+    if (url.endsWith("/v1/openclaw/sandboxes/sandbox-1") && init?.method === "DELETE") {
+      return Response.json({
+        id: "sandbox-1",
+        name: "research-sandbox",
+        image: "openclaw/local:latest",
+        status: "deleted",
+        createdAt: "2026-06-26T08:00:00.000Z",
+        updatedAt: "2026-06-26T08:02:00.000Z",
+        logs: ["deleted sandbox", "created sandbox"]
       });
     }
     if (url.endsWith("/v1/openclaw/sandboxes")) {

@@ -91,6 +91,28 @@ describe("console routes", () => {
     await app.close();
   });
 
+  it("allows browser preflight requests for OpenClaw sandbox deletion", async () => {
+    const app = await buildServer({
+      store: new InMemoryCanonicalMemoryStore(),
+      runtime: new NoopRuntimeMemoryProvider(),
+      authApiKey: apiKey
+    });
+
+    const response = await app.inject({
+      method: "OPTIONS",
+      url: "/v1/openclaw/sandboxes/sandbox-1",
+      headers: {
+        origin: "http://localhost:5173",
+        "access-control-request-method": "DELETE",
+        "access-control-request-headers": "authorization,content-type"
+      }
+    });
+
+    expect(response.statusCode).toBe(204);
+    expect(response.headers["access-control-allow-methods"]).toContain("DELETE");
+    await app.close();
+  });
+
   it("returns keyword rankings sorted by count", async () => {
     const store = new InMemoryCanonicalMemoryStore();
     await store.captureEvent({
