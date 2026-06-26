@@ -5,7 +5,7 @@ const EnvSchema = z.object({
   SUPABASE_URL: z.string().url().optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
   MEMORY_GATEWAY_API_KEY: z.string().min(1),
-  MEMORY_PROVIDER: z.enum(["noop", "mem0", "mem9"]).default("noop")
+  MEMORY_PROVIDER: z.enum(["noop", "mem0"]).default("noop")
 });
 
 export type AppConfig = z.infer<typeof EnvSchema>;

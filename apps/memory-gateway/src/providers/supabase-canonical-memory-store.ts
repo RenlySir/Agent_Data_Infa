@@ -1,9 +1,14 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { extractKeywordCounts } from "../domain/keywords";
 import type { RecallCandidate, RequestScope } from "../domain/types";
 import type {
-  CanonicalMemoryStore,
   CaptureEventInput,
   AccessLogInput,
+  AccessLogEntry,
+  CanonicalMemoryStore,
+  KeywordCount,
+  ListEventsInput,
+  MemoryEventEntry,
   RememberInput
 } from "./canonical-memory-store";
 
@@ -112,6 +117,90 @@ export class SupabaseCanonicalMemoryStore implements CanonicalMemoryStore {
 
     if (error) throw error;
     return { auditId: data.id };
+  }
+
+  async listAccessLogs(scope: RequestScope, limit: number): Promise<AccessLogEntry[]> {
+    const { data, error } = await this.supabase
+      .from("memory_access_logs")
+      .select("*")
+      .eq("tenant_id", scope.tenantId)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+
+    if (error) throw error;
+    return (data ?? []).map((row) => ({
+      id: row.id,
+      tenantId: row.tenant_id,
+      actorType: row.actor_type,
+      actorId: row.actor_id,
+      operation: row.operation,
+      memoryIds: row.memory_ids ?? [],
+      requestScope: row.request_scope ?? {},
+      decision: row.decision,
+      reason: row.reason ?? undefined,
+      createdAt: row.created_at
+    }));
+  }
+
+  async listEvents(scope: RequestScope, input: ListEventsInput = {}): Promise<MemoryEventEntry[]> {
+    const limit = input.limit ?? 100;
+    let query = this.supabase
+      .from("memory_events")
+      .select(
+        "id, tenant_id, user_id, agent_id, project_id, session_id, task_id, event_type, source_type, content, structured_payload, created_at"
+      )
+      .eq("tenant_id", scope.tenantId)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+
+    if (scope.projectId) {
+      query = query.eq("project_id", scope.projectId);
+    }
+    if (input.sourceType) {
+      query = query.eq("source_type", input.sourceType);
+    }
+    if (input.eventTypes?.length) {
+      query = query.in("event_type", input.eventTypes);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    return (data ?? []).map((row) => ({
+      id: row.id,
+      scope: {
+        tenantId: row.tenant_id,
+        userId: row.user_id ?? undefined,
+        agentId: row.agent_id,
+        projectId: row.project_id ?? undefined,
+        sessionId: row.session_id,
+        taskId: row.task_id ?? undefined
+      },
+      eventType: row.event_type,
+      sourceType: row.source_type,
+      content: row.content ?? undefined,
+      structuredPayload: row.structured_payload ?? {},
+      createdAt: row.created_at
+    }));
+  }
+
+  async keywordCounts(scope: RequestScope, limit: number): Promise<KeywordCount[]> {
+    let query = this.supabase
+      .from("memory_items")
+      .select("content, project_id")
+      .eq("tenant_id", scope.tenantId)
+      .eq("status", "active")
+      .limit(500);
+
+    if (scope.projectId) {
+      query = query.or(`project_id.eq.${scope.projectId},project_id.is.null`);
+    } else {
+      query = query.is("project_id", null);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+    return extractKeywordCounts((data ?? []).map((row) => row.content ?? ""), limit);
   }
 }
 

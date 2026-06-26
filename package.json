@@ -1,0 +1,15 @@
+{
+  "name": "agent-data-infrastructure",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "install:all": "npm --prefix apps/memory-gateway install && npm --prefix apps/memory-console install",
+    "dev": "scripts/dev-local.sh",
+    "deploy:local": "DETACH=1 scripts/dev-local.sh",
+    "stop:local": "screen -S agent-data-gateway -X quit >/dev/null 2>&1 || true; screen -S agent-data-console -X quit >/dev/null 2>&1 || true",
+    "build": "npm --prefix apps/memory-gateway run build && npm --prefix apps/memory-console run build",
+    "test": "npm --prefix apps/memory-gateway test && npm --prefix apps/memory-console test",
+    "verify": "npm run build && npm run test"
+  }
+}

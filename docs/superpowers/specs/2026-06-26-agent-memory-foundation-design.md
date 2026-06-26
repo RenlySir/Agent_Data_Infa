@@ -7,7 +7,7 @@ Build an agent memory foundation that separates runtime memory, canonical long-t
 The accepted architecture is:
 
 ```text
-mem0/mem9 = Agent memory runtime layer
+mem0 = Agent memory runtime layer
 Supabase/Postgres = canonical long-term memory and governance layer
 Object storage = evidence and archive layer
 Memory Gateway + Consolidator + Memory Gate = control plane for write, promotion, recall, and safety
@@ -21,14 +21,14 @@ Memory Gateway + Consolidator + Memory Gate = control plane for write, promotion
 - Full-text search: Postgres `tsvector`/GIN.
 - Object storage: Supabase Storage first, S3/MinIO compatible adapter later.
 - Queue: Supabase Queues for MVP, replaceable by Kafka/Temporal later.
-- Runtime memory provider: mem0 or mem9 behind a provider interface.
+- Runtime memory provider: mem0 behind a provider interface.
 - Agent clients: HTTP API first; Python/TypeScript SDKs can wrap the API later.
 
 ## Architectural Principles
 
 1. Keep raw evidence separate from curated memory.
 2. Treat long-term memory as canonical, versioned, permissioned data.
-3. Treat mem0/mem9 as a runtime memory provider, not the only source of truth.
+3. Treat mem0 as a runtime memory provider, not the only source of truth.
 4. Require policy checks on both write and recall paths.
 5. Use hybrid retrieval: structured filters, vector search, full-text search, recency, and importance.
 6. Do not promote every short-term memory into long-term memory.
@@ -67,7 +67,7 @@ Single service boundary for all memory reads and writes.
 Responsibilities:
 
 - Validate tenant, user, agent, project, session, and task scopes.
-- Route hot memory operations to mem0/mem9.
+- Route hot memory operations to mem0.
 - Write append-only events to Supabase.
 - Dispatch async extraction/consolidation work.
 - Enforce Memory Gate checks before returning memories.
@@ -75,7 +75,7 @@ Responsibilities:
 
 ### 3. Runtime Memory Provider
 
-Adapter over mem0 or mem9.
+Adapter over mem0.
 
 Responsibilities:
 
@@ -146,7 +146,7 @@ Responsibilities:
 | Layer | Name | Main Use | Default Storage | TTL |
 |---|---|---|---|---|
 | L0 | Working Memory | Current model context, scratchpad, tool intermediate state | In-process / Redis | One turn to one task |
-| L1 | Runtime Memory | Hot session/task/project memory, recent preferences | mem0 or mem9 | Minutes to weeks |
+| L1 | Runtime Memory | Hot session/task/project memory, recent preferences | mem0 | Minutes to weeks |
 | L2 | Canonical Memory | Stable facts, preferences, procedures, profiles, project memory | Supabase Postgres + pgvector | Long-lived |
 | L3 | Evidence Archive | Raw source evidence and large artifacts | Supabase Storage / S3 / MinIO | Long-lived / policy-based |
 
@@ -538,7 +538,7 @@ Accept user corrections, confirmations, rejections, and replacement content.
 1. Agent sends event to Memory Gateway.
 2. Gateway validates identity, tenant, scope, size, sensitivity, and schema.
 3. Gateway writes memory_events append-only row.
-4. Gateway sends hot memory to mem0/mem9 if event is useful for immediate continuation.
+4. Gateway sends hot memory to mem0 if event is useful for immediate continuation.
 5. Gateway enqueues extraction job.
 6. Consolidator extracts candidates.
 7. Memory Gate applies write policies.
@@ -627,7 +627,7 @@ Read-time checks:
 The smallest useful implementation should include:
 
 1. Memory Gateway with `/events`, `/recall`, `/remember`, `/forget`, `/feedback`.
-2. Runtime provider interface with one concrete provider: mem0 or mem9.
+2. Runtime provider interface with one concrete provider: mem0.
 3. Supabase schema for events, items, embeddings, objects, feedback, access logs.
 4. RLS baseline policies.
 5. Async extraction worker with simple LLM-based candidate extraction.
@@ -657,7 +657,6 @@ apps/memory-gateway/
     providers/
       runtime-memory-provider.ts
       mem0-provider.ts
-      mem9-provider.ts
       canonical-memory-store.ts
       object-store.ts
     workers/
@@ -704,7 +703,7 @@ packages/memory-sdk/
 
 ### Phase 3: Runtime Provider
 
-- Implement mem0 or mem9 provider.
+- Implement mem0 provider.
 - Write hot memory on selected events.
 - Merge L1 and L2 recall results.
 
@@ -810,13 +809,13 @@ Start with Phase 1 and Phase 2 only:
 5. Add unit tests for Memory Gate and scoring.
 6. Add integration-style tests against mocked Supabase clients.
 
-Do not implement mem0/mem9 provider yet. Keep the provider interface stable so
-mem0 or mem9 can be added in Phase 3.
+Do not implement mem0 provider yet. Keep the provider interface stable so
+mem0 can be added in Phase 3.
 ```
 
 ## Open Decisions
 
-1. Pick mem0 or mem9 as the first runtime provider.
+1. Pick mem0 as the first runtime provider.
 2. Pick Fastify or Hono for the gateway.
 3. Decide whether project membership is managed inside this service or delegated to an external IAM/project service.
 4. Decide whether to use Supabase Edge Functions or a standalone worker for extraction and embedding.

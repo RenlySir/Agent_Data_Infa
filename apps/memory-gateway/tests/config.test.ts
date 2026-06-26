@@ -18,4 +18,14 @@ describe("loadConfig", () => {
       MEMORY_PROVIDER: "noop"
     });
   });
+
+  it("only allows noop and mem0 runtime memory providers", () => {
+    expect(() =>
+      loadConfig({
+        PORT: "8787",
+        MEMORY_GATEWAY_API_KEY: "dev-memory-key",
+        MEMORY_PROVIDER: "mem9"
+      })
+    ).toThrow();
+  });
 });

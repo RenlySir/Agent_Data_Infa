@@ -4,7 +4,7 @@
 
 **Goal:** Build the first usable Memory Gateway with Supabase canonical memory schema, baseline RLS, no-op runtime memory provider, event capture, explicit remember, and structured recall.
 
-**Architecture:** The MVP implements the Memory Gateway and canonical memory layer first. mem0/mem9 are represented by a stable provider interface and a no-op provider so the runtime provider can be added in the next phase without changing API contracts.
+**Architecture:** The MVP implements the Memory Gateway and canonical memory layer first. mem0 is represented by a stable provider interface and a no-op provider so the runtime provider can be added in the next phase without changing API contracts.
 
 **Tech Stack:** TypeScript, Fastify, Zod, Vitest, Supabase Postgres, pgvector, Postgres full-text search.
 
@@ -606,7 +606,7 @@ const EnvSchema = z.object({
   PORT: z.coerce.number().default(8787),
   SUPABASE_URL: z.string().url(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
-  MEMORY_PROVIDER: z.enum(["noop", "mem0", "mem9"]).default("noop")
+  MEMORY_PROVIDER: z.enum(["noop", "mem0"]).default("noop")
 });
 
 export type AppConfig = z.infer<typeof EnvSchema>;

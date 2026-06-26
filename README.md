@@ -4,7 +4,7 @@ This repository contains the initial design and MVP implementation skeleton for 
 
 The architecture separates:
 
-- mem0/mem9 as the agent runtime memory layer.
+- mem0 as the agent runtime memory layer.
 - Supabase/Postgres as the canonical long-term memory and governance layer.
 - Object storage as the evidence and archive layer.
 - Memory Gateway, Consolidator, and Memory Gate as the control plane.
@@ -14,24 +14,29 @@ Start with:
 - Design: `docs/superpowers/specs/2026-06-26-agent-memory-foundation-design.md`
 - MVP plan: `docs/superpowers/plans/2026-06-26-agent-memory-foundation-mvp.md`
 - Gateway: `apps/memory-gateway`
+- Console: `apps/memory-console`
 
 ## Development
 
 ```bash
-cd apps/memory-gateway
-npm install
-npm test
-npm run build
+npm run install:all
+npm run verify
 ```
 
-## Local Gateway
+## Local Deployment
 
 ```bash
-cd apps/memory-gateway
-PORT=8787 MEMORY_PROVIDER=noop MEMORY_GATEWAY_API_KEY=dev-memory-key npm run dev
+npm run deploy:local
 ```
 
 The local MVP uses an in-memory canonical store unless Supabase configuration is provided.
+The Memory Gateway starts on `http://localhost:8787` and the frontend console starts on `http://localhost:5173`.
+
+Stop the detached local deployment with:
+
+```bash
+npm run stop:local
+```
 
 Memory API requests must include a gateway API key and server-trusted scope headers:
 

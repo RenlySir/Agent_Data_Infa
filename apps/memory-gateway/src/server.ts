@@ -6,15 +6,23 @@ import { AuthError } from "./domain/auth";
 import type { CanonicalMemoryStore } from "./providers/canonical-memory-store";
 import { InMemoryCanonicalMemoryStore } from "./providers/in-memory-canonical-memory-store";
 import { NoopRuntimeMemoryProvider } from "./providers/noop-runtime-memory-provider";
+import {
+  InMemoryOpenClawSandboxProvider,
+  type OpenClawSandboxProvider
+} from "./providers/openclaw-sandbox-provider";
 import type { RuntimeMemoryProvider } from "./providers/runtime-memory-provider";
 import { SupabaseCanonicalMemoryStore } from "./providers/supabase-canonical-memory-store";
+import { analyticsRoute } from "./routes/analytics";
+import { controlPlaneRoute } from "./routes/control-plane";
 import { eventsRoute } from "./routes/events";
+import { openClawRoute } from "./routes/openclaw";
 import { recallRoute } from "./routes/recall";
 import { rememberRoute } from "./routes/remember";
 
 export interface ServerDeps {
   store?: CanonicalMemoryStore;
   runtime?: RuntimeMemoryProvider;
+  openclaw?: OpenClawSandboxProvider;
   authApiKey?: string;
 }
 
@@ -34,11 +42,15 @@ export async function buildServer(deps: ServerDeps = {}) {
 
   const store = deps.store ?? buildDefaultStore();
   const runtime = deps.runtime ?? new NoopRuntimeMemoryProvider();
+  const openclaw = deps.openclaw ?? new InMemoryOpenClawSandboxProvider();
   const authApiKey = deps.authApiKey ?? loadConfig().MEMORY_GATEWAY_API_KEY;
 
   await app.register(eventsRoute({ store, runtime, authApiKey }));
   await app.register(rememberRoute({ store, authApiKey }));
   await app.register(recallRoute({ store, runtime, authApiKey }));
+  await app.register(controlPlaneRoute({ store, authApiKey }));
+  await app.register(openClawRoute({ store, openclaw, authApiKey }));
+  await app.register(analyticsRoute({ store, authApiKey }));
 
   app.get("/healthz", async () => ({ ok: true }));
 
