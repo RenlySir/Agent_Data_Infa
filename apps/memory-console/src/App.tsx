@@ -21,7 +21,15 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { ConsoleConfig, ControlPlaneStatus, GateDecision, KeywordCount, Sandbox } from "./api";
+import type {
+  ConsoleConfig,
+  ControlPlaneStatus,
+  GateDecision,
+  KeywordCount,
+  RecallMemory,
+  RecallResponse,
+  Sandbox
+} from "./api";
 import { requestJson } from "./api";
 import { defaultConfig, fallbackDecisions, fallbackKeywords, fallbackSandboxes, fallbackStatus } from "./sample-data";
 
@@ -48,6 +56,9 @@ export function App() {
   const [sandboxes, setSandboxes] = useState<Sandbox[]>(fallbackSandboxes);
   const [keywords, setKeywords] = useState<KeywordCount[]>(fallbackKeywords);
   const [decisions, setDecisions] = useState<GateDecision[]>(fallbackDecisions);
+  const [recallResults, setRecallResults] = useState<RecallMemory[]>([]);
+  const [activeAction, setActiveAction] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState("Ready");
   const [inspector, setInspector] = useState<InspectorState>({
     title: "Console boot",
     payload: { config: defaultConfig }
@@ -57,7 +68,8 @@ export function App() {
   const [rememberText, setRememberText] = useState("User prefers Chinese technical plans with architecture and execution steps.");
   const [sandboxName, setSandboxName] = useState("research-sandbox");
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (options: { updateInspector?: boolean } = {}) => {
+    const updateInspector = options.updateInspector ?? true;
     setConnection("checking");
     try {
       const [nextStatus, sandboxResult, keywordResult, decisionResult] = await Promise.all([
@@ -70,11 +82,15 @@ export function App() {
       setSandboxes(sandboxResult.sandboxes);
       setKeywords(keywordResult.keywords);
       setDecisions(decisionResult.decisions);
-      setInspector({ title: "Refresh result", payload: { nextStatus, sandboxResult, keywordResult, decisionResult } });
+      if (updateInspector) {
+        setInspector({ title: "Refresh result", payload: { nextStatus, sandboxResult, keywordResult, decisionResult } });
+      }
       setConnection("connected");
     } catch (error) {
       setConnection("offline");
-      setInspector({ title: "Refresh failed", payload: String(error) });
+      if (updateInspector) {
+        setInspector({ title: "Refresh failed", payload: String(error) });
+      }
     }
   }, [config]);
 
@@ -85,65 +101,114 @@ export function App() {
   const maxKeywordCount = useMemo(() => Math.max(1, ...keywords.map((keyword) => keyword.count)), [keywords]);
 
   async function createSandbox() {
-    const sandbox = await requestJson<Sandbox>(config, "/v1/openclaw/sandboxes", {
-      method: "POST",
-      body: JSON.stringify({ name: sandboxName, image: "openclaw/local:latest" })
+    await runAction("create-sandbox", async () => {
+      const sandbox = await requestJson<Sandbox>(config, "/v1/openclaw/sandboxes", {
+        method: "POST",
+        body: JSON.stringify({ name: sandboxName, image: "openclaw/local:latest" })
+      });
+      setInspector({ title: "OpenClaw sandbox created", payload: sandbox });
+      await refresh({ updateInspector: false });
+      return sandbox;
     });
-    setInspector({ title: "OpenClaw sandbox created", payload: sandbox });
-    await refresh();
   }
 
   async function transitionSandbox(sandbox: Sandbox, action: "start" | "stop") {
-    const next = await requestJson<Sandbox>(config, `/v1/openclaw/sandboxes/${sandbox.id}/${action}`, {
-      method: "POST"
+    await runAction(`${action}-${sandbox.id}`, async () => {
+      const next = await requestJson<Sandbox>(config, `/v1/openclaw/sandboxes/${sandbox.id}/${action}`, {
+        method: "POST"
+      });
+      setInspector({ title: `OpenClaw sandbox ${action}`, payload: next });
+      await refresh({ updateInspector: false });
+      return next;
     });
-    setInspector({ title: `OpenClaw sandbox ${action}`, payload: next });
-    await refresh();
   }
 
   async function deleteSandbox(sandbox: Sandbox) {
-    const next = await requestJson<Sandbox>(config, `/v1/openclaw/sandboxes/${sandbox.id}`, {
-      method: "DELETE"
+    await runAction(`delete-${sandbox.id}`, async () => {
+      const next = await requestJson<Sandbox>(config, `/v1/openclaw/sandboxes/${sandbox.id}`, {
+        method: "DELETE"
+      });
+      setInspector({ title: "OpenClaw sandbox deleted", payload: next });
+      await refresh({ updateInspector: false });
+      return next;
     });
-    setInspector({ title: "OpenClaw sandbox deleted", payload: next });
-    await refresh();
   }
 
   async function remember() {
-    const result = await requestJson(config, "/v1/memory/remember", {
-      method: "POST",
-      body: JSON.stringify({
-        tenant_id: config.tenantId,
-        user_id: config.userId,
-        agent_id: config.agentId,
-        project_id: config.projectId,
-        owner_type: "user",
-        owner_id: config.userId,
-        memory_type: "preference",
-        scope: "user",
-        content: rememberText,
-        confirmed_by_user: true,
-        confidence: 0.9,
-        importance: 0.8
-      })
+    await runAction("remember", async () => {
+      const result = await requestJson(config, "/v1/memory/remember", {
+        method: "POST",
+        body: JSON.stringify({
+          tenant_id: config.tenantId,
+          user_id: config.userId,
+          agent_id: config.agentId,
+          project_id: config.projectId,
+          owner_type: "user",
+          owner_id: config.userId,
+          memory_type: "preference",
+          scope: "user",
+          content: rememberText,
+          confirmed_by_user: true,
+          confidence: 0.9,
+          importance: 0.8
+        })
+      });
+      setInspector({ title: "Remember response", payload: result });
+      await refresh({ updateInspector: false });
+      return result;
     });
-    setInspector({ title: "Remember response", payload: result });
-    await refresh();
   }
 
-  async function recall() {
-    const result = await requestJson(config, "/v1/memory/recall", {
-      method: "POST",
-      body: JSON.stringify({
-        tenant_id: config.tenantId,
-        user_id: config.userId,
-        agent_id: config.agentId,
-        project_id: config.projectId,
-        query: recallQuery,
-        limit: 8
-      })
+  async function recall(query = recallQuery) {
+    await runAction("recall", async () => {
+      const result = await requestJson<RecallResponse>(config, "/v1/memory/recall", {
+        method: "POST",
+        body: JSON.stringify({
+          tenant_id: config.tenantId,
+          user_id: config.userId,
+          agent_id: config.agentId,
+          project_id: config.projectId,
+          query,
+          limit: 8
+        })
+      });
+      setRecallResults(result.memories);
+      setInspector({ title: "Recall response", payload: result });
+      setActiveTab("memory");
+      return result;
     });
-    setInspector({ title: "Recall response", payload: result });
+  }
+
+  async function healthCheck() {
+    await runAction("health-check", async () => {
+      const response = await fetch(`${config.gatewayUrl}/healthz`, {
+        headers: {
+          authorization: `Bearer ${config.apiKey}`
+        }
+      });
+      if (!response.ok) {
+        throw new Error(`${response.status} ${response.statusText}: ${await response.text()}`);
+      }
+      const result = await response.json();
+      setInspector({ title: "Gateway health", payload: result });
+      return result;
+    });
+  }
+
+  async function runAction<T>(name: string, action: () => Promise<T>) {
+    setActiveAction(name);
+    setActionMessage(`${name} running`);
+    try {
+      const result = await action();
+      setActionMessage(`${name} completed`);
+      return result;
+    } catch (error) {
+      setActionMessage(`${name} failed`);
+      setInspector({ title: `${name} failed`, payload: String(error) });
+      return undefined;
+    } finally {
+      setActiveAction(null);
+    }
   }
 
   return (
@@ -197,11 +262,12 @@ export function App() {
             <h2>{headingFor(activeTab)}</h2>
           </div>
           <div className="topbar-actions">
+            <span className="action-message">{actionMessage}</span>
             <span className={`connection ${connection}`}>
               <span />
               {connection}
             </span>
-            <button className="icon-button" onClick={refresh} type="button" aria-label="Refresh">
+            <button className="icon-button" onClick={() => refresh()} type="button" aria-label="Refresh">
               <RefreshCw size={17} />
             </button>
           </div>
@@ -244,6 +310,7 @@ export function App() {
             onStart={(sandbox) => transitionSandbox(sandbox, "start")}
             onStop={(sandbox) => transitionSandbox(sandbox, "stop")}
             onDelete={deleteSandbox}
+            activeAction={activeAction}
           />
         </div>
       );
@@ -251,33 +318,46 @@ export function App() {
 
     if (activeTab === "memory") {
       return (
-        <div className="split">
+        <div className="memory-layout">
           <section className="tool-panel">
             <h3>Remember</h3>
             <textarea value={rememberText} onChange={(event) => setRememberText(event.target.value)} />
-            <button className="primary" onClick={remember} type="button">
+            <button className="primary" onClick={remember} type="button" disabled={activeAction === "remember"}>
               <CheckCircle2 size={16} />
-              Store confirmed memory
+              {activeAction === "remember" ? "Storing..." : "Store confirmed memory"}
             </button>
           </section>
           <section className="tool-panel">
             <h3>Recall</h3>
             <input value={recallQuery} onChange={(event) => setRecallQuery(event.target.value)} />
-            <button className="primary" onClick={recall} type="button">
+            <button className="primary" onClick={() => recall()} type="button" disabled={activeAction === "recall"}>
               <Search size={16} />
-              Run recall
+              {activeAction === "recall" ? "Recalling..." : "Run recall"}
             </button>
           </section>
+          <RecallResults memories={recallResults} onInspect={(memory) => setInspector({ title: `Memory: ${memory.id}`, payload: memory })} />
         </div>
       );
     }
 
     if (activeTab === "control") {
       return (
-        <div className="three-column">
-          <ControlCard icon={Activity} title="Memory Gateway" rows={[["Status", status.gateway.status], ["Recent requests", status.gateway.recentRequests], ["Denied", status.gateway.denyCount]]} />
-          <ControlCard icon={Database} title="Consolidator" rows={[["Status", status.consolidator.status], ["Queue depth", status.consolidator.queueDepth], ["Promoted today", status.consolidator.promotedToday]]} />
-          <ControlCard icon={ShieldCheck} title="Memory Gate" rows={[["Status", status.memoryGate.status], ["Allowed", status.memoryGate.allowCount], ["Denied", status.memoryGate.denyCount]]} />
+        <div className="stack">
+          <div className="control-actions">
+            <button className="primary" onClick={healthCheck} type="button" disabled={activeAction === "health-check"}>
+              <Activity size={16} />
+              {activeAction === "health-check" ? "Checking..." : "Health check"}
+            </button>
+            <button className="secondary" onClick={() => refresh()} type="button" disabled={connection === "checking"}>
+              <RefreshCw size={16} />
+              Reload control data
+            </button>
+          </div>
+          <div className="three-column">
+            <ControlCard icon={Activity} title="Memory Gateway" rows={[["Status", status.gateway.status], ["Recent requests", status.gateway.recentRequests], ["Denied", status.gateway.denyCount]]} />
+            <ControlCard icon={Database} title="Consolidator" rows={[["Status", status.consolidator.status], ["Queue depth", status.consolidator.queueDepth], ["Promoted today", status.consolidator.promotedToday]]} />
+            <ControlCard icon={ShieldCheck} title="Memory Gate" rows={[["Status", status.memoryGate.status], ["Allowed", status.memoryGate.allowCount], ["Denied", status.memoryGate.denyCount]]} />
+          </div>
         </div>
       );
     }
@@ -287,9 +367,9 @@ export function App() {
         <div className="stack">
           <section className="create-row">
             <input value={sandboxName} onChange={(event) => setSandboxName(event.target.value)} />
-            <button className="primary" onClick={createSandbox} type="button">
+            <button className="primary" onClick={createSandbox} type="button" disabled={activeAction === "create-sandbox"}>
               <Plus size={16} />
-              Create sandbox
+              {activeAction === "create-sandbox" ? "Creating..." : "Create sandbox"}
             </button>
           </section>
           <SandboxTable
@@ -297,6 +377,7 @@ export function App() {
             onStart={(sandbox) => transitionSandbox(sandbox, "start")}
             onStop={(sandbox) => transitionSandbox(sandbox, "stop")}
             onDelete={deleteSandbox}
+            activeAction={activeAction}
           />
         </div>
       );
@@ -309,8 +390,10 @@ export function App() {
             <button
               key={keyword.keyword}
               className="keyword-row"
-              onClick={() => setInspector({ title: `Keyword: ${keyword.keyword}`, payload: keyword })}
+              onClick={() => recall(keyword.keyword)}
               type="button"
+              aria-label={keyword.keyword}
+              disabled={activeAction === "recall"}
             >
               <span>{keyword.keyword}</span>
               <div>
@@ -323,8 +406,37 @@ export function App() {
       );
     }
 
-    return <AuditTable decisions={decisions} />;
+    return <AuditTable decisions={decisions} onInspect={(decision) => setInspector({ title: `Decision: ${decision.operation}`, payload: decision })} />;
   }
+}
+
+function RecallResults({
+  memories,
+  onInspect
+}: {
+  memories: RecallMemory[];
+  onInspect: (memory: RecallMemory) => void;
+}) {
+  return (
+    <section className="results-panel">
+      <div className="panel-heading">
+        <BrainCircuit size={18} />
+        <h3>Recall results</h3>
+      </div>
+      {memories.length === 0 ? (
+        <p className="empty-state">No recall results yet.</p>
+      ) : (
+        <div className="result-list">
+          {memories.map((memory) => (
+            <button className="result-row" key={memory.id} onClick={() => onInspect(memory)} type="button">
+              <strong>{memory.content}</strong>
+              <span>{[memory.memoryType, memory.scope, memory.layer].filter(Boolean).join(" / ")}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
+  );
 }
 
 function Metric({ icon: Icon, label, value, sub }: { icon: LucideIcon; label: string; value: string; sub: string }) {
@@ -359,12 +471,14 @@ function SandboxTable({
   sandboxes,
   onStart,
   onStop,
-  onDelete
+  onDelete,
+  activeAction
 }: {
   sandboxes: Sandbox[];
   onStart: (sandbox: Sandbox) => void;
   onStop: (sandbox: Sandbox) => void;
   onDelete: (sandbox: Sandbox) => void;
+  activeAction: string | null;
 }) {
   return (
     <section className="table-panel">
@@ -380,13 +494,28 @@ function SandboxTable({
             <span>{sandbox.image}</span>
             <span>{sandbox.status}</span>
             <div className="row-actions">
-              <button onClick={() => onStart(sandbox)} type="button" aria-label={`Start ${sandbox.name}`}>
+              <button
+                onClick={() => onStart(sandbox)}
+                type="button"
+                aria-label={`Start ${sandbox.name}`}
+                disabled={activeAction === `start-${sandbox.id}`}
+              >
                 <Play size={14} />
               </button>
-              <button onClick={() => onStop(sandbox)} type="button" aria-label={`Stop ${sandbox.name}`}>
+              <button
+                onClick={() => onStop(sandbox)}
+                type="button"
+                aria-label={`Stop ${sandbox.name}`}
+                disabled={activeAction === `stop-${sandbox.id}`}
+              >
                 {sandbox.status === "running" ? <StopCircle size={14} /> : <CircleStop size={14} />}
               </button>
-              <button onClick={() => onDelete(sandbox)} type="button" aria-label={`Delete ${sandbox.name}`}>
+              <button
+                onClick={() => onDelete(sandbox)}
+                type="button"
+                aria-label={`Delete ${sandbox.name}`}
+                disabled={activeAction === `delete-${sandbox.id}`}
+              >
                 <Trash2 size={14} />
               </button>
             </div>
@@ -397,7 +526,7 @@ function SandboxTable({
   );
 }
 
-function AuditTable({ decisions }: { decisions: GateDecision[] }) {
+function AuditTable({ decisions, onInspect }: { decisions: GateDecision[]; onInspect: (decision: GateDecision) => void }) {
   return (
     <section className="table-panel">
       <div className="panel-heading">
@@ -406,12 +535,12 @@ function AuditTable({ decisions }: { decisions: GateDecision[] }) {
       </div>
       <div className="audit-table">
         {decisions.map((decision) => (
-          <div className="audit-row" key={decision.id}>
+          <button className="audit-row" key={decision.id} onClick={() => onInspect(decision)} type="button">
             <span className={`decision-pill ${decision.decision}`}>{decision.decision}</span>
             <strong>{decision.operation}</strong>
             <span>{decision.actorId}</span>
             <time>{new Date(decision.createdAt).toLocaleString()}</time>
-          </div>
+          </button>
         ))}
       </div>
     </section>

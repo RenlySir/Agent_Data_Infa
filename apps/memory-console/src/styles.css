@@ -30,6 +30,11 @@ button {
   cursor: pointer;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
 .app-shell {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
@@ -160,6 +165,11 @@ textarea {
   gap: 10px;
 }
 
+.action-message {
+  color: #526978;
+  font-size: 13px;
+}
+
 .connection {
   display: inline-flex;
   align-items: center;
@@ -208,6 +218,7 @@ textarea {
 .main-panel,
 .inspector,
 .tool-panel,
+.results-panel,
 .table-panel,
 .control-card,
 .metric {
@@ -291,10 +302,15 @@ textarea {
   font-size: 12px;
 }
 
-.split {
+.split,
+.memory-layout {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 14px;
+}
+
+.memory-layout .results-panel {
+  grid-column: 1 / -1;
 }
 
 .tool-panel {
@@ -311,16 +327,64 @@ textarea {
   margin: 0;
 }
 
-.primary {
+.primary,
+.secondary {
   border: 0;
-  background: #1f7a8c;
-  color: white;
   border-radius: 7px;
   padding: 10px 12px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
+}
+
+.primary {
+  background: #1f7a8c;
+  color: white;
+}
+
+.secondary {
+  background: #fff;
+  border: 1px solid #d8e0e6;
+  color: #1c3340;
+}
+
+.control-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.results-panel {
+  padding: 16px;
+}
+
+.empty-state {
+  margin: 12px 0 0;
+  color: #657782;
+  font-size: 13px;
+}
+
+.result-list {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.result-row {
+  border: 1px solid #e3e9ee;
+  border-radius: 7px;
+  background: #fbfcfd;
+  color: #17202a;
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  text-align: left;
+}
+
+.result-row span {
+  color: #657782;
+  font-size: 12px;
 }
 
 .three-column {
@@ -457,7 +521,9 @@ textarea {
   border: 1px solid #e3e9ee;
   border-radius: 7px;
   background: #fbfcfd;
+  color: #17202a;
   font-size: 13px;
+  text-align: left;
 }
 
 .decision-pill {
@@ -527,6 +593,7 @@ textarea {
 
   .topbar,
   .split,
+  .memory-layout,
   .create-row {
     grid-template-columns: 1fr;
     display: grid;

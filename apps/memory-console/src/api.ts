@@ -42,6 +42,22 @@ export interface GateDecision {
   createdAt: string;
 }
 
+export interface RecallMemory {
+  id: string;
+  layer?: string;
+  content: string;
+  memoryType?: string;
+  scope?: string;
+  confidence?: number;
+  importance?: number;
+  updatedAt?: string;
+}
+
+export interface RecallResponse {
+  memories: RecallMemory[];
+  audit_id: string;
+}
+
 export function headers(config: ConsoleConfig) {
   return {
     authorization: `Bearer ${config.apiKey}`,
